@@ -10,5 +10,6 @@ yarn.lock
 nc_swagger.json
 src/lib/Api.ts
 node_modules/
-!build/.output/
+!build/
+.output/
 !.output/public/
