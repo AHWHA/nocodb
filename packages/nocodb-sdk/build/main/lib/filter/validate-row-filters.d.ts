@@ -1,0 +1,8 @@
+import { ColumnType, FilterType } from '../../lib/Api';
+export declare function validateRowFilters(params: {
+    filters: FilterType[];
+    data: any;
+    columns: ColumnType[];
+    client: any;
+    metas: Record<string, any>;
+}): boolean;

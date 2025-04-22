@@ -1,0 +1,18 @@
+import { ColumnType } from './Api';
+export declare const dateMonthFormats: string[];
+export declare const timeFormats: string[];
+export declare const dateFormats: string[];
+export declare const isDateMonthFormat: (format: string) => boolean;
+export declare function validateDateWithUnknownFormat(v: string): boolean;
+export declare function getDateFormat(v: string): string;
+export declare function getDateTimeFormat(v: string): string;
+export declare function parseStringDate(v: string, dateFormat: string): string;
+export declare function parseStringDateTime(v: string, dateTimeFormat?: string, toLocal?: boolean): string;
+export declare function convertToTargetFormat(v: string, oldDataFormat: any, newDateFormat: string): string;
+export declare const handleTZ: (val: any) => any;
+export declare function validateDateFormat(v: string): boolean;
+export declare const timeAgo: (date: any) => string;
+export declare const isValidTimeFormat: (value: string, format: string) => boolean;
+export declare function constructDateTimeFormat(column: ColumnType): string;
+export declare function constructDateFormat(column: ColumnType): any;
+export declare function constructTimeFormat(column: ColumnType): any;

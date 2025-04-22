@@ -1,0 +1,9 @@
+import AbstractColumnHelper, { SerializerOrParserFnProps } from '../column.interface';
+export declare class PercentHelper extends AbstractColumnHelper {
+    columnDefaultMeta: {
+        is_progress: boolean;
+    };
+    serializeValue(value: any, params: SerializerOrParserFnProps['params']): number | null;
+    parseValue(value: any): string | number | null;
+    parsePlainCellValue(value: any): string;
+}

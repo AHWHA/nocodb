@@ -1,0 +1,35 @@
+export declare const precisionFormats: readonly [0, 1, 2, 3, 4, 5, 6, 7, 8];
+export declare const supportedBarcodeFormats: readonly [{
+    readonly value: "CODE128";
+    readonly label: "CODE128";
+}, {
+    readonly value: "upc";
+    readonly label: "UPC";
+}, {
+    readonly value: "EAN13";
+    readonly label: "EAN-13";
+}, {
+    readonly value: "EAN8";
+    readonly label: "EAN-8";
+}, {
+    readonly value: "EAN5";
+    readonly label: "EAN-5";
+}, {
+    readonly value: "EAN2";
+    readonly label: "EAN-2";
+}, {
+    readonly value: "CODE39";
+    readonly label: "CODE39";
+}, {
+    readonly value: "ITF14";
+    readonly label: "ITF-14";
+}, {
+    readonly value: "MSI";
+    readonly label: "MSI";
+}, {
+    readonly value: "PHARMACODE";
+    readonly label: "PHARMACODE";
+}, {
+    readonly value: "CODABAR";
+    readonly label: "CODABAR";
+}];

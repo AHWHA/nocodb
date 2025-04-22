@@ -1,0 +1,15 @@
+import { ColumnType } from '../../../lib/Api';
+import { SerializerOrParserFnProps } from '../column.interface';
+export declare const parseDefault: (value: any) => any;
+export declare const parseIntValue: (value: string | null | number, col?: ColumnType) => string | number;
+export declare const parseDecimalValue: (value: string | null | number, col: ColumnType) => string;
+export declare const parsePercentValue: (value: string | null) => string;
+export declare const parseDurationValue: (value: string | null, col: ColumnType) => any;
+export declare const parseCheckboxValue: (value: boolean | string | number | '0' | '1') => boolean;
+export declare const parseJsonValue: (value: any) => string;
+export declare const parseCurrencyValue: (value: any, col: ColumnType) => any;
+export declare const parseDateValue: (value: string | null, col: ColumnType, isSystemCol?: boolean) => string;
+export declare const parseDateTimeValue: (value: any, params: SerializerOrParserFnProps['params']) => any;
+export declare const parseTimeValue: (value: any, params: SerializerOrParserFnProps['params']) => string;
+export declare const parseYearValue: (value: any) => any;
+export declare const parseUserValue: (value: any, withDisplayName?: boolean) => string;

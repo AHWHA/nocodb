@@ -1,0 +1,8 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.mergeSwaggerSchema = void 0;
+function mergeSwaggerSchema(swaggerCE, swaggerEE) {
+    return Object.assign(Object.assign(Object.assign({}, swaggerCE), swaggerEE), { paths: Object.assign(Object.assign({}, swaggerCE.paths), swaggerEE.paths), components: Object.assign(Object.assign(Object.assign({}, swaggerCE.components), swaggerEE.components), { schemas: Object.assign(Object.assign({}, swaggerCE.components.schemas), swaggerEE.components.schemas), responses: Object.assign(Object.assign({}, swaggerCE.components.responses), swaggerEE.components.responses) }) });
+}
+exports.mergeSwaggerSchema = mergeSwaggerSchema;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoibWVyZ2VTd2FnZ2VyU2NoZW1hLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vLi4vc3JjL2xpYi9tZXJnZVN3YWdnZXJTY2hlbWEudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6Ijs7O0FBQUEsU0FBZ0Isa0JBQWtCLENBQUMsU0FBUyxFQUFFLFNBQVM7SUFDckQscURBQ0ssU0FBUyxHQUNULFNBQVMsS0FDWixLQUFLLGtDQUNBLFNBQVMsQ0FBQyxLQUFLLEdBQ2YsU0FBUyxDQUFDLEtBQUssR0FFcEIsVUFBVSxnREFDTCxTQUFTLENBQUMsVUFBVSxHQUNwQixTQUFTLENBQUMsVUFBVSxLQUN2QixPQUFPLGtDQUNGLFNBQVMsQ0FBQyxVQUFVLENBQUMsT0FBTyxHQUM1QixTQUFTLENBQUMsVUFBVSxDQUFDLE9BQU8sR0FFakMsU0FBUyxrQ0FDSixTQUFTLENBQUMsVUFBVSxDQUFDLFNBQVMsR0FDOUIsU0FBUyxDQUFDLFVBQVUsQ0FBQyxTQUFTLFFBR3JDO0FBQ0osQ0FBQztBQXJCRCxnREFxQkMifQ==

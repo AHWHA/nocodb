@@ -1,0 +1,11 @@
+import AbstractColumnHelper, { SerializerOrParserFnProps } from '../column.interface';
+import { NcRecord } from '../../../lib/ncTypes';
+export declare class UserHelper extends AbstractColumnHelper {
+    columnDefaultMeta: {
+        is_multi: boolean;
+        notify: boolean;
+    };
+    serializeValue(value: any, params: SerializerOrParserFnProps['params']): string | null | NcRecord;
+    parseValue(value: any): string | null;
+    parsePlainCellValue(value: any): string;
+}

@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isValidURL = void 0;
+const validator_1 = require("validator");
+const isValidURL = (str, extraProps) => {
+    var _a;
+    if (str.startsWith('mailto'))
+        return (0, validator_1.isMailtoURI)(str);
+    let require_host = (_a = extraProps === null || extraProps === void 0 ? void 0 : extraProps.require_host) !== null && _a !== void 0 ? _a : true;
+    if (str.startsWith('file://') || str.startsWith('tel:')) {
+        require_host = false;
+    }
+    return (0, validator_1.isURL)(`${str}`, Object.assign(Object.assign({}, (extraProps || {})), { require_host, protocols: ['http', 'https', 'ftp', 'file', 'tel'] }));
+};
+exports.isValidURL = isValidURL;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoidXJsLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vLi4vLi4vLi4vc3JjL2xpYi9jb2x1bW5IZWxwZXIvdXRpbHMvdXJsLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7OztBQUFBLHlDQUE2RDtBQUV0RCxNQUFNLFVBQVUsR0FBRyxDQUFDLEdBQVcsRUFBRSxVQUF5QixFQUFFLEVBQUU7O0lBQ25FLElBQUksR0FBRyxDQUFDLFVBQVUsQ0FBQyxRQUFRLENBQUM7UUFBRSxPQUFPLElBQUEsdUJBQVcsRUFBQyxHQUFHLENBQUMsQ0FBQztJQUV0RCxJQUFJLFlBQVksR0FBRyxNQUFBLFVBQVUsYUFBVixVQUFVLHVCQUFWLFVBQVUsQ0FBRSxZQUFZLG1DQUFJLElBQUksQ0FBQztJQUVwRCxJQUFJLEdBQUcsQ0FBQyxVQUFVLENBQUMsU0FBUyxDQUFDLElBQUksR0FBRyxDQUFDLFVBQVUsQ0FBQyxNQUFNLENBQUMsRUFBRSxDQUFDO1FBQ3hELFlBQVksR0FBRyxLQUFLLENBQUM7SUFDdkIsQ0FBQztJQUVELE9BQU8sSUFBQSxpQkFBSyxFQUFDLEdBQUcsR0FBRyxFQUFFLGtDQUNoQixDQUFDLFVBQVUsSUFBSSxFQUFFLENBQUMsS0FDckIsWUFBWSxFQUNaLFNBQVMsRUFBRSxDQUFDLE1BQU0sRUFBRSxPQUFPLEVBQUUsS0FBSyxFQUFFLE1BQU0sRUFBRSxLQUFLLENBQUMsSUFDbEQsQ0FBQztBQUNMLENBQUMsQ0FBQztBQWRXLFFBQUEsVUFBVSxjQWNyQiJ9

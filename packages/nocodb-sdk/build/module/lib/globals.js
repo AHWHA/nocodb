@@ -1,0 +1,183 @@
+import { ProjectRoles, WorkspaceUserRoles } from './enums';
+export const enumColors = {
+    light: [
+        '#cfdffe',
+        '#d0f1fd',
+        '#c2f5e8',
+        '#ffdaf6',
+        '#ffdce5',
+        '#fee2d5',
+        '#ffeab6',
+        '#d1f7c4',
+        '#ede2fe',
+        '#eeeeee',
+    ],
+    dark: [
+        '#2d7ff999',
+        '#18bfff99',
+        '#20d9d299',
+        '#ff08c299',
+        '#f82b6099',
+        '#ff6f2c99',
+        '#fcb40099',
+        '#20c93399',
+        '#8b46ff99',
+        '#666',
+    ],
+    get: (theme, index) => {
+        index = Math.abs(index) % enumColors[theme].length;
+        return enumColors[theme][index];
+    },
+};
+export var ViewTypes;
+(function (ViewTypes) {
+    ViewTypes[ViewTypes["FORM"] = 1] = "FORM";
+    ViewTypes[ViewTypes["GALLERY"] = 2] = "GALLERY";
+    ViewTypes[ViewTypes["GRID"] = 3] = "GRID";
+    ViewTypes[ViewTypes["KANBAN"] = 4] = "KANBAN";
+    ViewTypes[ViewTypes["MAP"] = 5] = "MAP";
+    ViewTypes[ViewTypes["CALENDAR"] = 6] = "CALENDAR";
+})(ViewTypes || (ViewTypes = {}));
+export const viewTypeAlias = {
+    [ViewTypes.FORM]: 'form',
+    [ViewTypes.GALLERY]: 'gallery',
+    [ViewTypes.GRID]: 'grid',
+    [ViewTypes.KANBAN]: 'kanban',
+    [ViewTypes.MAP]: 'map',
+    [ViewTypes.CALENDAR]: 'calendar',
+};
+export const viewTypeToStringMap = Object.assign({}, viewTypeAlias);
+// Generate reverse mapping from the original viewTypeAlias
+export const stringToViewTypeMap = Object.entries(viewTypeAlias).reduce((acc, [key, value]) => {
+    acc[value] = Number(key);
+    return acc;
+}, {});
+export var ProjectTypes;
+(function (ProjectTypes) {
+    ProjectTypes["DATABASE"] = "database";
+    ProjectTypes["DOCUMENTATION"] = "documentation";
+    ProjectTypes["COWRITER"] = "cowriter";
+    ProjectTypes["DASHBOARD"] = "dashboard";
+})(ProjectTypes || (ProjectTypes = {}));
+export var RelationTypes;
+(function (RelationTypes) {
+    RelationTypes["HAS_MANY"] = "hm";
+    RelationTypes["BELONGS_TO"] = "bt";
+    RelationTypes["MANY_TO_MANY"] = "mm";
+    RelationTypes["ONE_TO_ONE"] = "oo";
+})(RelationTypes || (RelationTypes = {}));
+export const ExpandedFormMode = {
+    FIELD: 'field',
+    ATTACHMENT: 'attachment',
+};
+export var ExportTypes;
+(function (ExportTypes) {
+    ExportTypes["EXCEL"] = "excel";
+    ExportTypes["CSV"] = "csv";
+})(ExportTypes || (ExportTypes = {}));
+export var PluginCategory;
+(function (PluginCategory) {
+    PluginCategory["STORAGE"] = "Storage";
+    PluginCategory["EMAIL"] = "Email";
+})(PluginCategory || (PluginCategory = {}));
+export var ModelTypes;
+(function (ModelTypes) {
+    ModelTypes["TABLE"] = "table";
+    ModelTypes["VIEW"] = "view";
+})(ModelTypes || (ModelTypes = {}));
+export var ProjectStatus;
+(function (ProjectStatus) {
+    ProjectStatus["JOB"] = "job";
+})(ProjectStatus || (ProjectStatus = {}));
+export var TiptapNodesTypes;
+(function (TiptapNodesTypes) {
+    TiptapNodesTypes["doc"] = "doc";
+    TiptapNodesTypes["sec"] = "sec";
+    TiptapNodesTypes["paragraph"] = "paragraph";
+    TiptapNodesTypes["text"] = "text";
+    TiptapNodesTypes["heading"] = "heading";
+    TiptapNodesTypes["bullet"] = "bullet";
+    TiptapNodesTypes["ordered"] = "ordered";
+    TiptapNodesTypes["task"] = "task";
+    TiptapNodesTypes["quote"] = "quote";
+    TiptapNodesTypes["divider"] = "divider";
+    TiptapNodesTypes["codeBlock"] = "codeBlock";
+    TiptapNodesTypes["image"] = "image";
+    TiptapNodesTypes["callout"] = "callout";
+    TiptapNodesTypes["tipCallout"] = "tipCallout";
+    TiptapNodesTypes["table"] = "table";
+    TiptapNodesTypes["tableRow"] = "tableRow";
+    TiptapNodesTypes["tableCell"] = "tableCell";
+    TiptapNodesTypes["embed"] = "embed";
+    TiptapNodesTypes["collapsable"] = "collapsable";
+    TiptapNodesTypes["collapsableContent"] = "collapsable_content";
+    TiptapNodesTypes["collapsableHeader"] = "collapsable_header";
+    TiptapNodesTypes["column"] = "column";
+    TiptapNodesTypes["columnContent"] = "columnContent";
+    TiptapNodesTypes["linkToPage"] = "linkToPage";
+    TiptapNodesTypes["attachment"] = "attachment";
+})(TiptapNodesTypes || (TiptapNodesTypes = {}));
+export var TiptapMarksTypes;
+(function (TiptapMarksTypes) {
+    TiptapMarksTypes["strike"] = "strike";
+    TiptapMarksTypes["bold"] = "bold";
+    TiptapMarksTypes["italic"] = "italic";
+    TiptapMarksTypes["link"] = "link";
+    TiptapMarksTypes["code"] = "code";
+    TiptapMarksTypes["underline"] = "underline";
+})(TiptapMarksTypes || (TiptapMarksTypes = {}));
+export var NcDataErrorCodes;
+(function (NcDataErrorCodes) {
+    NcDataErrorCodes["NC_ERR_MM_MODEL_NOT_FOUND"] = "NC_ERR_MM_MODEL_NOT_FOUND";
+})(NcDataErrorCodes || (NcDataErrorCodes = {}));
+export var NcErrorType;
+(function (NcErrorType) {
+    NcErrorType["AUTHENTICATION_REQUIRED"] = "AUTHENTICATION_REQUIRED";
+    NcErrorType["API_TOKEN_NOT_ALLOWED"] = "API_TOKEN_NOT_ALLOWED";
+    NcErrorType["WORKSPACE_NOT_FOUND"] = "WORKSPACE_NOT_FOUND";
+    NcErrorType["BASE_NOT_FOUND"] = "BASE_NOT_FOUND";
+    NcErrorType["SOURCE_NOT_FOUND"] = "SOURCE_NOT_FOUND";
+    NcErrorType["TABLE_NOT_FOUND"] = "TABLE_NOT_FOUND";
+    NcErrorType["VIEW_NOT_FOUND"] = "VIEW_NOT_FOUND";
+    NcErrorType["FIELD_NOT_FOUND"] = "FIELD_NOT_FOUND";
+    NcErrorType["RECORD_NOT_FOUND"] = "RECORD_NOT_FOUND";
+    NcErrorType["GENERIC_NOT_FOUND"] = "GENERIC_NOT_FOUND";
+    NcErrorType["HOOK_NOT_FOUND"] = "HOOK_NOT_FOUND";
+    NcErrorType["REQUIRED_FIELD_MISSING"] = "REQUIRED_FIELD_MISSING";
+    NcErrorType["ERROR_DUPLICATE_RECORD"] = "ERROR_DUPLICATE_RECORD";
+    NcErrorType["USER_NOT_FOUND"] = "USER_NOT_FOUND";
+    NcErrorType["INVALID_OFFSET_VALUE"] = "INVALID_OFFSET_VALUE";
+    NcErrorType["INVALID_PAGE_VALUE"] = "INVALID_PAGE_VALUE";
+    NcErrorType["INVALID_LIMIT_VALUE"] = "INVALID_LIMIT_VALUE";
+    NcErrorType["INVALID_FILTER"] = "INVALID_FILTER";
+    NcErrorType["INVALID_SHARED_VIEW_PASSWORD"] = "INVALID_SHARED_VIEW_PASSWORD";
+    NcErrorType["INVALID_ATTACHMENT_JSON"] = "INVALID_ATTACHMENT_JSON";
+    NcErrorType["NOT_IMPLEMENTED"] = "NOT_IMPLEMENTED";
+    NcErrorType["INTERNAL_SERVER_ERROR"] = "INTERNAL_SERVER_ERROR";
+    NcErrorType["DATABASE_ERROR"] = "DATABASE_ERROR";
+    NcErrorType["UNKNOWN_ERROR"] = "UNKNOWN_ERROR";
+    NcErrorType["BAD_JSON"] = "BAD_JSON";
+    NcErrorType["INVALID_PK_VALUE"] = "INVALID_PK_VALUE";
+    NcErrorType["COLUMN_ASSOCIATED_WITH_LINK"] = "COLUMN_ASSOCIATED_WITH_LINK";
+    NcErrorType["TABLE_ASSOCIATED_WITH_LINK"] = "TABLE_ASSOCIATED_WITH_LINK";
+    NcErrorType["INTEGRATION_NOT_FOUND"] = "INTEGRATION_NOT_FOUND";
+    NcErrorType["INTEGRATION_LINKED_WITH_BASES"] = "INTEGRATION_LINKED_WITH_BASES";
+    NcErrorType["FORMULA_ERROR"] = "FORMULA_ERROR";
+    NcErrorType["FORMULA_CIRCULAR_REF_ERROR"] = "FORMULA_CIRCULAR_REF_ERROR";
+    NcErrorType["PERMISSION_DENIED"] = "PERMISSION_DENIED";
+    NcErrorType["INVALID_ATTACHMENT_UPLOAD_SCOPE"] = "INVALID_ATTACHMENT_UPLOAD_SCOPE";
+    NcErrorType["CANNOT_CALCULATE_INTERMEDIATE_ORDER"] = "CANNOT_CALCULATE_INTERMEDIATE_ORDER";
+    NcErrorType["REORDER_FAILED"] = "REORDER_FAILED";
+    NcErrorType["PLAN_LIMIT_EXCEEDED"] = "PLAN_LIMIT_EXCEEDED";
+})(NcErrorType || (NcErrorType = {}));
+export const LongTextAiMetaProp = 'ai';
+export const NO_SCOPE = 'nc';
+export const NON_SEAT_ROLES = [
+    WorkspaceUserRoles.NO_ACCESS,
+    WorkspaceUserRoles.VIEWER,
+    WorkspaceUserRoles.COMMENTER,
+    ProjectRoles.NO_ACCESS,
+    ProjectRoles.VIEWER,
+    ProjectRoles.COMMENTER,
+];
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiZ2xvYmFscy5qcyIsInNvdXJjZVJvb3QiOiIiLCJzb3VyY2VzIjpbIi4uLy4uLy4uL3NyYy9saWIvZ2xvYmFscy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiQUFBQSxPQUFPLEVBQWdCLFlBQVksRUFBRSxrQkFBa0IsRUFBRSxNQUFNLFNBQVMsQ0FBQztBQUd6RSxNQUFNLENBQUMsTUFBTSxVQUFVLEdBQUc7SUFDeEIsS0FBSyxFQUFFO1FBQ0wsU0FBUztRQUNULFNBQVM7UUFDVCxTQUFTO1FBQ1QsU0FBUztRQUNULFNBQVM7UUFDVCxTQUFTO1FBQ1QsU0FBUztRQUNULFNBQVM7UUFDVCxTQUFTO1FBQ1QsU0FBUztLQUNWO0lBQ0QsSUFBSSxFQUFFO1FBQ0osV0FBVztRQUNYLFdBQVc7UUFDWCxXQUFXO1FBQ1gsV0FBVztRQUNYLFdBQVc7UUFDWCxXQUFXO1FBQ1gsV0FBVztRQUNYLFdBQVc7UUFDWCxXQUFXO1FBQ1gsTUFBTTtLQUNQO0lBQ0QsR0FBRyxFQUFFLENBQUMsS0FBdUIsRUFBRSxLQUFhLEVBQUUsRUFBRTtRQUM5QyxLQUFLLEdBQUcsSUFBSSxDQUFDLEdBQUcsQ0FBQyxLQUFLLENBQUMsR0FBRyxVQUFVLENBQUMsS0FBSyxDQUFDLENBQUMsTUFBTSxDQUFDO1FBQ25ELE9BQU8sVUFBVSxDQUFDLEtBQUssQ0FBQyxDQUFDLEtBQUssQ0FBQyxDQUFDO0lBQ2xDLENBQUM7Q0FDRixDQUFDO0FBRUYsTUFBTSxDQUFOLElBQVksU0FPWDtBQVBELFdBQVksU0FBUztJQUNuQix5Q0FBUSxDQUFBO0lBQ1IsK0NBQVcsQ0FBQTtJQUNYLHlDQUFRLENBQUE7SUFDUiw2Q0FBVSxDQUFBO0lBQ1YsdUNBQU8sQ0FBQTtJQUNQLGlEQUFZLENBQUE7QUFDZCxDQUFDLEVBUFcsU0FBUyxLQUFULFNBQVMsUUFPcEI7QUFFRCxNQUFNLENBQUMsTUFBTSxhQUFhLEdBQThCO0lBQ3RELENBQUMsU0FBUyxDQUFDLElBQUksQ0FBQyxFQUFFLE1BQU07SUFDeEIsQ0FBQyxT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
