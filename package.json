@@ -66,6 +66,7 @@
       "@swc/core",
       "core-js",
       "esbuild",
+      "highlight.js",
       "msgpackr-extract",
       "nx",
       "sharp",
