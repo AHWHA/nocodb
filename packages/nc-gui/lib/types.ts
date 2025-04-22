@@ -328,6 +328,7 @@ interface NcTableColumnProps<T extends object = Record<string, any>> {
   dataIndex?: keyof T | (string & Record<never, never>)
   // name can be used as value, which will be used to display in header if title is absent and in data-test-id
   name?: string
+  format?: (value: any, record: T) => any
   [key: string]: any
 }
 
@@ -474,6 +475,7 @@ interface CellRenderer {
       ltarState?: Record<string, any>,
       args?: { metaValue?: TableType; viewMetaValue?: ViewType },
       beforeRow?: string,
+      path?: Array<number>,
     ) => Promise<any>
     actionManager: ActionManager
     makeCellEditable: (row: Row, clickedColumn: CanvasGridColumn) => void
@@ -498,6 +500,7 @@ interface CellRenderer {
       ltarState?: Record<string, any>,
       args?: { metaValue?: TableType; viewMetaValue?: ViewType },
       beforeRow?: string,
+      path?: Array<number>,
     ) => Promise<any>
     actionManager: ActionManager
     makeCellEditable: (row: Row, clickedColumn: CanvasGridColumn) => void
@@ -518,6 +521,7 @@ interface CellRenderer {
       ltarState?: Record<string, any>,
       args?: { metaValue?: TableType; viewMetaValue?: ViewType },
       beforeRow?: string,
+      path?: Array<number>,
     ) => Promise<any>
     actionManager: ActionManager
     makeCellEditable: (row: Row, clickedColumn: CanvasGridColumn) => void

@@ -1,14 +1,16 @@
-import path from 'path'
 import type { ComputedRef, Ref } from 'vue'
-import { NcApiVersion, UITypes, extractFilterFromXwhere, isAIPromptCol } from 'nocodb-sdk'
 import {
   type Api,
   type ColumnType,
   type LinkToAnotherRecordType,
+  NcApiVersion,
   type PaginatedType,
   type RelationTypes,
   type TableType,
+  UITypes,
   type ViewType,
+  extractFilterFromXwhere,
+  isAIPromptCol,
   isCreatedOrLastModifiedByCol,
   isCreatedOrLastModifiedTimeCol,
   isSystemColumn,
@@ -60,7 +62,7 @@ export function useInfiniteData(args: {
   callbacks: {
     syncVisibleData?: () => void
     getCount?: (path: Array<number>) => void
-    getWhereFilter?: (path: Array<number>) => string
+    getWhereFilter?: (path: Array<number>, ignoreWhereFilter?: boolean) => Promise<string>
     reloadAggregate?: (params: {
       fields?: Array<{ title: string; aggregation?: string | undefined }>
       path: Array<number>
@@ -97,17 +99,23 @@ export function useInfiniteData(args: {
 
   const { fetchSharedViewData, fetchCount } = useSharedView()
 
-  const { nestedFilters, allFilters, sorts } = disableSmartsheet
+  const { nestedFilters, allFilters, sorts, isExternalSource, isAlreadyShownUpgradeModal } = disableSmartsheet
     ? {
         nestedFilters: ref([]),
         allFilters: ref([]),
         sorts: ref([]),
+        isExternalSource: computed(() => false),
+        isAlreadyShownUpgradeModal: ref(false),
       }
     : useSmartsheetStoreOrThrow()
+
+  const { blockExternalSourceRecordVisibility, showUpgradeToSeeMoreRecordsModal } = useEeConfig()
 
   const selectedAllRecords = ref(false)
 
   const totalRows = ref(0)
+
+  const actualTotalRows = ref(0)
 
   const cachedRows = ref<Map<number, Row>>(new Map())
 
@@ -120,6 +128,7 @@ export function useInfiniteData(args: {
         cachedRows: Ref<Map<number, Row>>
         chunkStates: Ref<Array<'loading' | 'loaded' | undefined>>
         totalRows: Ref<number>
+        actualTotalRows: Ref<number>
         selectedRows: ComputedRef<Array<Row>>
         isRowSortRequiredRows: ComputedRef<Array<Row>>
       }
@@ -171,6 +180,7 @@ export function useInfiniteData(args: {
         cachedRows,
         chunkStates,
         totalRows,
+        actualTotalRows,
         isRowSortRequiredRows,
         selectedRows,
       }
@@ -203,6 +213,7 @@ export function useInfiniteData(args: {
           }
         },
       }),
+      actualTotalRows: ref(0),
       selectedRows: computed<Row[]>(() => Array.from(newCache.cachedRows.value.values()).filter((row) => row.rowMeta?.selected)),
       isRowSortRequiredRows: computed<Array<Row>>(() =>
         Array.from(newCache.cachedRows.value.values()).filter((row) => row.rowMeta?.isRowOrderUpdated),
@@ -324,6 +335,12 @@ export function useInfiniteData(args: {
     }
   }
 
+  let upgradeModalTimer: any
+
+  onBeforeUnmount(() => {
+    clearTimeout(upgradeModalTimer)
+  })
+
   async function loadData(
     params: Parameters<Api<any>['dbViewRow']['list']>[4] & {
       limit?: number
@@ -335,7 +352,28 @@ export function useInfiniteData(args: {
   ): Promise<Row[]> {
     if ((!base?.value?.id || !meta.value?.id || !viewMeta.value?.id) && !isPublic?.value) return []
 
-    const whereFilter = callbacks?.getWhereFilter?.(path)
+    const whereFilter = await callbacks?.getWhereFilter?.(path)
+
+    if (!path.length && params.offset && blockExternalSourceRecordVisibility(isExternalSource.value)) {
+      if (!isAlreadyShownUpgradeModal.value && params.offset >= EXTERNAL_SOURCE_VISIBLE_ROWS) {
+        isAlreadyShownUpgradeModal.value = true
+
+        if (upgradeModalTimer) {
+          clearTimeout(upgradeModalTimer)
+        }
+
+        upgradeModalTimer = setTimeout(() => {
+          showUpgradeToSeeMoreRecordsModal({
+            isExternalSource: isExternalSource.value,
+          })
+          clearTimeout(upgradeModalTimer)
+        }, 1000)
+      }
+
+      if (params.offset >= EXTERNAL_SOURCE_TOTAL_ROWS) {
+        return []
+      }
+    }
 
     try {
       const response = !isPublic?.value
@@ -516,48 +554,29 @@ export function useInfiniteData(args: {
 
     const dataCache = getDataCache(path)
 
-    const sortedIndices = Array.from(dataCache.cachedRows.value.keys()).sort((a, b) => a - b)
-    let siblingIndex = sortedIndices.findIndex((index) => index === expandedRowIndex) + (dir === NavigateDir.NEXT ? 1 : -1)
+    const siblingIndex = expandedRowIndex + (dir === NavigateDir.NEXT ? 1 : -1)
 
-    // Skip unsaved rows
-    while (
-      siblingIndex >= 0 &&
-      siblingIndex < sortedIndices.length &&
-      dataCache.cachedRows.value.get(sortedIndices[siblingIndex])?.rowMeta?.new
-    ) {
-      siblingIndex += dir === NavigateDir.NEXT ? 1 : -1
-    }
-
-    // Check if we've gone out of bounds
     if (siblingIndex < 0 || siblingIndex >= dataCache.totalRows.value) {
       return message.info(t('msg.info.noMoreRecords'))
     }
 
-    // If the sibling row is not in cachedRows, load more data
-    if (siblingIndex >= sortedIndices.length) {
-      await loadData({
-        offset: sortedIndices[sortedIndices.length - 1] + 1,
-        limit: 10,
-      })
-      sortedIndices.push(
-        ...Array.from(dataCache.cachedRows.value.keys())
-          .filter((key) => !sortedIndices.includes(key))
-          .sort((a, b) => a - b),
-      )
+    let row = dataCache.cachedRows.value.get(siblingIndex)
+
+    if (!row) {
+      await getRows(siblingIndex, CHUNK_SIZE, path)
+      row = dataCache.cachedRows.value.get(siblingIndex)
     }
 
-    // Extract the row id of the sibling row
-    const siblingRow = dataCache.cachedRows.value.get(sortedIndices[siblingIndex])
-    if (siblingRow) {
-      const rowId = extractPkFromRow(siblingRow.row, meta.value?.columns as ColumnType[])
-      if (rowId) {
-        await router.push({
-          query: {
-            ...routeQuery.value,
-            rowId,
-          },
-        })
-      }
+    if (!row) return
+
+    const rowId = extractPkFromRow(row.row, meta.value?.columns as ColumnType[])
+    if (rowId) {
+      await router.push({
+        query: {
+          ...routeQuery.value,
+          rowId,
+        },
+      })
     }
   }
 
@@ -1038,7 +1057,13 @@ export function useInfiniteData(args: {
   async function insertRow(
     currentRow: Row,
     ltarState: Record<string, any> = {},
-    { metaValue = meta.value, viewMetaValue = viewMeta.value }: { metaValue?: TableType; viewMetaValue?: ViewType } = {},
+    {
+      metaValue = meta.value,
+      viewMetaValue = viewMeta.value,
+    }: {
+      metaValue?: TableType
+      viewMetaValue?: ViewType
+    } = {},
     undo = false,
     ignoreShifting = false,
     beforeRowID?: string,
@@ -1217,7 +1242,13 @@ export function useInfiniteData(args: {
   async function updateRowProperty(
     toUpdate: Row,
     property: string,
-    { metaValue = meta.value, viewMetaValue = viewMeta.value }: { metaValue?: TableType; viewMetaValue?: ViewType } = {},
+    {
+      metaValue = meta.value,
+      viewMetaValue = viewMeta.value,
+    }: {
+      metaValue?: TableType
+      viewMetaValue?: ViewType
+    } = {},
     undo = false,
     path: Array<number> = [],
   ): Promise<Record<string, any> | undefined> {
@@ -1295,6 +1326,8 @@ export function useInfiniteData(args: {
         UITypes.Lookup,
         UITypes.Button,
         UITypes.Attachment,
+        UITypes.DateTime,
+        UITypes.Date,
       ])
 
       Object.assign(
@@ -1397,17 +1430,15 @@ export function useInfiniteData(args: {
       data = await insertRow(row, ltarState, args, false, true, beforeRowID, path)
     } else if (property) {
       if (cachedRow) {
-        Object.assign(row.row, {
-          ...(fieldsToOverwrite?.reduce((acc, col) => {
-            acc[col.title!] = cachedRow.row[col.title!]
-            return acc
-          }, {}) ?? {}),
-        })
+        fieldsToOverwrite?.reduce((acc, col) => {
+          if (!ncIsUndefined(cachedRow.row[col.title!])) acc[col.title!] = cachedRow.row[col.title!]
+          return acc
+        }, row.row)
       }
       data = await updateRowProperty(row, property, args, false, path)
     }
 
-    row.rowMeta.isValidationFailed = !validateRowFilters(
+    const isValidationFailed = !validateRowFilters(
       [...allFilters.value, ...computedWhereFilter.value],
       data,
       meta.value?.columns as ColumnType[],
@@ -1415,16 +1446,30 @@ export function useInfiniteData(args: {
       metas.value,
     )
 
+    const newRow = dataCache.cachedRows.value.get(row.rowMeta.rowIndex!)
+    if (newRow) newRow.rowMeta.isValidationFailed = isValidationFailed
+
     // check if the column is part of group by and value changed
     if (row.rowMeta?.path?.length && groupByColumns?.value) {
-      const index = groupByColumns.value.findIndex((c) => c.column.title === property)
-      if (index > -1) {
-        // check if column is group by and value changed
-        row.rowMeta.isGroupChanged = true
-        row.rowMeta.changedGroupIndex = index
-      }
-    }
+      const whereFilter = await callbacks?.getWhereFilter?.(row.rowMeta?.path, true)
+      const index = groupByColumns.value.findIndex((c) => c.column.title === property) ?? 0
 
+      const { filters: allGroupFilter } = extractFilterFromXwhere(
+        { api_version: NcApiVersion.V1 },
+        whereFilter ?? '',
+        columnsByAlias.value,
+      )
+
+      const isGroupValidationFailed = !validateRowFilters(
+        [...(allGroupFilter ?? [])],
+        data,
+        meta.value?.columns as ColumnType[],
+        getBaseType(viewMeta.value?.view?.source_id),
+        metas.value,
+      )
+      row.rowMeta.isGroupChanged = isGroupValidationFailed
+      row.rowMeta.changedGroupIndex = index
+    }
     const changedFields = property ? [property] : Object.keys(row.row)
 
     changedFields.push(
@@ -1450,7 +1495,6 @@ export function useInfiniteData(args: {
         path,
       })
 
-      const newRow = dataCache.cachedRows.value.get(row.rowMeta.rowIndex!)
       if (newRow) newRow.rowMeta.isRowOrderUpdated = needsResorting
     }
     callbacks?.syncVisibleData?.()
@@ -1458,7 +1502,13 @@ export function useInfiniteData(args: {
 
   async function bulkUpdateView(
     data: Record<string, any>[],
-    { metaValue = meta.value, viewMetaValue = viewMeta.value }: { metaValue?: TableType; viewMetaValue?: ViewType } = {},
+    {
+      metaValue = meta.value,
+      viewMetaValue = viewMeta.value,
+    }: {
+      metaValue?: TableType
+      viewMetaValue?: ViewType
+    } = {},
     path: Array<number> = [],
   ): Promise<void> {
     if (!viewMetaValue) {
@@ -1475,7 +1525,13 @@ export function useInfiniteData(args: {
 
   async function deleteRowById(
     id: string,
-    { metaValue = meta.value, viewMetaValue = viewMeta.value }: { metaValue?: TableType; viewMetaValue?: ViewType } = {},
+    {
+      metaValue = meta.value,
+      viewMetaValue = viewMeta.value,
+    }: {
+      metaValue?: TableType
+      viewMetaValue?: ViewType
+    } = {},
     path: Array<number> = [],
   ): Promise<boolean> {
     if (!id) {
@@ -1529,7 +1585,7 @@ export function useInfiniteData(args: {
 
     const dataCache = getDataCache(path)
 
-    const whereFilter = callbacks?.getWhereFilter?.(path)
+    const whereFilter = await callbacks?.getWhereFilter?.(path)
 
     try {
       const { count } = isPublic?.value
@@ -1541,7 +1597,13 @@ export function useInfiniteData(args: {
             where: whereFilter,
           })
 
-      dataCache.totalRows.value = count as number
+      if (!path.length && blockExternalSourceRecordVisibility(isExternalSource.value)) {
+        dataCache.totalRows.value = Math.min(200, count as number)
+      } else {
+        dataCache.totalRows.value = count as number
+      }
+
+      dataCache.actualTotalRows.value = count as number
       callbacks?.syncVisibleData?.()
     } catch (error: any) {
       const errorMessage = await extractSdkResponseErrorMsg(error)
@@ -1637,6 +1699,7 @@ export function useInfiniteData(args: {
     cachedRows,
     recoverLTARRefs,
     totalRows,
+    actualTotalRows,
     clearCache,
     syncCount,
     selectedRows,

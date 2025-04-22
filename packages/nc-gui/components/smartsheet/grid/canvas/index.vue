@@ -2,6 +2,7 @@
 import {
   type ColumnReqType,
   type ColumnType,
+  PlanLimitTypes,
   type TableType,
   UITypes,
   type ViewType,
@@ -23,6 +24,7 @@ import { columnTypeName } from './utils/headerUtils'
 import { MouseClickType, NO_EDITABLE_CELL, getMouseClickType, parseCellWidth } from './utils/cell'
 import {
   ADD_NEW_COLUMN_WIDTH,
+  AGGREGATION_HEIGHT,
   COLUMN_HEADER_HEIGHT_IN_PX,
   GROUP_HEADER_HEIGHT,
   GROUP_PADDING,
@@ -36,6 +38,7 @@ import type { Row } from '#imports'
 
 const props = defineProps<{
   totalRows: number
+  actualTotalRows: number
   data: Map<number, Row>
   groupDataCache: Map<
     string,
@@ -48,7 +51,7 @@ const props = defineProps<{
     }
   >
   rowHeightEnum?: number
-  loadData: (params?: any, shouldShowLoading?: boolean) => Promise<Array<Row>>
+  loadData: (params?: any, shouldShowLoading?: boolean, path?: Array<number>) => Promise<Array<Row>>
   callAddEmptyRow?: (
     newRowIndex?: number,
     metaValue?: TableType,
@@ -154,8 +157,13 @@ const {
 // VModels
 const vSelectedAllRecords = useVModel(props, 'selectedAllRecords', emits)
 
+const { eventBus, isSqlView } = useSmartsheetStoreOrThrow()
+
+const { showRecordPlanLimitExceededModal, navigateToPricing } = useEeConfig()
+
 // Props to Refs
 const totalRows = toRef(props, 'totalRows')
+const actualTotalRows = toRef(props, 'actualTotalRows')
 const totalGroups = toRef(props, 'totalGroups')
 const chunkStates = toRef(props, 'chunkStates')
 const cachedRows = toRef(props, 'data')
@@ -230,7 +238,6 @@ const { height: windowHeight, width: windowWidth } = useWindowSize()
 const { aggregations, loadViewAggregate } = useViewAggregateOrThrow()
 const { isDataReadOnly, isUIAllowed, isMetaReadOnly } = useRoles()
 const { isMobileMode, isAddNewRecordGridMode, setAddNewRecordGridMode, appInfo } = useGlobal()
-const { eventBus, isSqlView } = useSmartsheetStoreOrThrow()
 const route = useRoute()
 const { $e } = useNuxtApp()
 const { t } = useI18n()
@@ -321,6 +328,8 @@ const {
   isFieldEditAllowed,
   isContextMenuAllowed,
   isDataEditAllowed,
+  removeInlineAddRecord,
+  upgradeModalInlineState,
 } = useCanvasTable({
   rowHeightEnum,
   cachedRows,
@@ -328,6 +337,7 @@ const {
   clearCache,
   chunkStates,
   totalRows,
+  actualTotalRows,
   loadData,
   scrollLeft,
   width,
@@ -377,41 +387,23 @@ const fixedLeftWidth = computed(() => {
   return columns.value.filter((col) => col.fixed).reduce((sum, col) => sum + parseCellWidth(col.width), 0)
 })
 
-const editEnabledCellPosition = computed(() => {
-  // TODO: @DarkPhoenix2704 handle for GroupBy
-  if (!editEnabled.value) {
+const isClamped = computed(() => {
+  if (!editEnabled.value || !containerRef.value)
     return {
-      top: 0,
-      left: 0,
+      verticalStuck: false,
+      horizontalStuck: false,
+      isStuck: false,
+    }
+
+  if (editEnabled.value.column?.uidt === UITypes.LongText || editEnabled.value.column?.uidt === UITypes.Formula) {
+    return {
+      verticalStuck: true,
+      horizontalStuck: true,
+      isStuck: true,
     }
   }
 
-  const top = Math.max(
-    32,
-    Math.min(containerRef.value?.clientHeight - rowHeight.value - 36, editEnabled.value.y - scrollTop.value - rowHeight.value),
-  )
-
-  const left = editEnabled.value.fixed
-    ? editEnabled.value.x
-    : Math.max(
-        fixedLeftWidth.value,
-        Math.min(containerRef.value?.clientWidth - editEnabled.value.width, editEnabled.value.x - scrollLeft.value),
-      )
-
-  return {
-    top: `${top}px`,
-    left: `${left}px`,
-  }
-})
-
-const isClamped = computed(() => {
-  if (!editEnabled.value || !containerRef.value) return false
-
-  if (editEnabled.value.column?.uidt === UITypes.LongText || editEnabled.value.column?.uidt === UITypes.Formula) {
-    return true
-  }
-
-  const rawTop = editEnabled.value.y - scrollTop.value - rowHeight.value
+  const rawTop = editEnabled.value.y - scrollTop.value - rowHeight.value + 1
   const clampedTop = Math.max(32, Math.min(containerRef.value.clientHeight - rowHeight.value - 36, rawTop))
   const verticalStuck = clampedTop !== rawTop
 
@@ -426,14 +418,49 @@ const isClamped = computed(() => {
     horizontalStuck = clampedLeft !== rawLeft
   }
 
-  return verticalStuck || horizontalStuck
+  return {
+    verticalStuck,
+    horizontalStuck,
+    isStuck: verticalStuck || horizontalStuck,
+  }
+})
+
+const editEnabledCellPosition = computed(() => {
+  if (!editEnabled.value) {
+    return {
+      top: 0,
+      left: 0,
+    }
+  }
+
+  const top = Math.max(
+    COLUMN_HEADER_HEIGHT_IN_PX - 1,
+    Math.min(
+      containerRef.value?.clientHeight - rowHeight.value - AGGREGATION_HEIGHT,
+      editEnabled.value.y - scrollTop.value - rowHeight.value,
+    ),
+  )
+
+  const left = editEnabled.value.fixed
+    ? editEnabled.value.x
+    : Math.max(
+        fixedLeftWidth.value,
+        Math.min(containerRef.value?.clientWidth - editEnabled.value.width, editEnabled.value.x - scrollLeft.value),
+      )
+
+  return {
+    top: `${top + (isClamped.value.horizontalStuck && !isGroupBy.value ? 1 : 0)}px`,
+    left: `${left + (isClamped.value.isStuck && editEnabled.value?.fixed ? -1 : 0)}px`,
+  }
 })
 
 const totalHeight = computed(() => {
+  const additionalPadding = removeInlineAddRecord.value ? 412 : 256
+
   // For non-grouped view, use original calculation
   if (!isGroupBy.value) {
     const dataCache = getDataCache()
-    return dataCache.totalRows.value * rowHeight.value + 32 + 256
+    return dataCache.totalRows.value * rowHeight.value + 32 + additionalPadding
   }
 
   // Add height for all top-level groups
@@ -448,7 +475,7 @@ const totalHeight = computed(() => {
         if (group.path) {
           sum += group.count * rowHeight.value
 
-          if (isAddingEmptyRowAllowed.value) {
+          if (isAddingEmptyRowAllowed.value && !removeInlineAddRecord.value) {
             sum += COLUMN_HEADER_HEIGHT_IN_PX
           }
           // 1 Px Offset is Added for Showing the activeBorders. Else it wont be visible
@@ -462,7 +489,8 @@ const totalHeight = computed(() => {
     }
     return sum
   }
-  return rootGroupsHeight + estimateTotalHeight(cachedGroups.value) + 32 + 256 // Additional padding
+
+  return rootGroupsHeight + estimateTotalHeight(cachedGroups.value) + 32 + additionalPadding // Additional padding
 })
 
 const isContextMenuOpen = computed({
@@ -589,9 +617,9 @@ function onActiveCellChanged() {
     }
     processGroups(cachedGroups.value)
   } else {
-    clearInvalidRows?.(undefined)
+    clearInvalidRows?.([])
     if (rowSortRequiredRows.value.length) {
-      applySorting?.(rowSortRequiredRows.value)
+      applySorting?.(rowSortRequiredRows.value, [])
     }
   }
   calculateSlices()
@@ -599,6 +627,8 @@ function onActiveCellChanged() {
 }
 
 const onNewRecordToGridClick = (path: Array<number> = []) => {
+  if (showRecordPlanLimitExceededModal()) return
+
   setAddNewRecordGridMode(true)
 
   let overwrite = {}
@@ -613,7 +643,9 @@ const onNewRecordToGridClick = (path: Array<number> = []) => {
   isDropdownVisible.value = false
 }
 
-const onNewRecordToFormClick = (path: Array<number> = []) => {
+function onNewRecordToFormClick(path: Array<number> = []) {
+  if (showRecordPlanLimitExceededModal()) return
+
   setAddNewRecordGridMode(false)
   let overwrite = {}
 
@@ -1069,9 +1101,13 @@ async function handleMouseUp(e: MouseEvent, _elementMap: CanvasElement) {
       const element = _elementMap.findElementAt(x, y, [ElementTypes.ROW, ElementTypes.GROUP, ElementTypes.ADD_NEW_ROW])
       const group = element?.group
       const row = element?.row
+      const rowIndex = row?.rowMeta?.rowIndex ?? -1
+
       if (element?.isGroup) {
         toggleExpand(group)
       } else if (element?.isRow && row) {
+        if (removeInlineAddRecord.value && rowIndex >= EXTERNAL_SOURCE_VISIBLE_ROWS) return
+
         expandForm(row, undefined, false, group?.path)
       }
       requestAnimationFrame(triggerRefreshCanvas)
@@ -1253,17 +1289,39 @@ async function handleMouseUp(e: MouseEvent, _elementMap: CanvasElement) {
     return
   }
 
+  if (removeInlineAddRecord.value) {
+    if (rowIndex >= EXTERNAL_SOURCE_VISIBLE_ROWS) {
+      return
+    } else {
+      if (upgradeModalInlineState.value.isHoveredLearnMore) {
+        window.open('https://nocodb.com/pricing', '_blank', 'noopener,noreferrer')
+        return
+      }
+
+      if (upgradeModalInlineState.value.isHoveredUpgrade) {
+        return navigateToPricing({ limitOrFeature: PlanLimitTypes.LIMIT_EXTERNAL_SOURCE_PER_WORKSPACE })
+      }
+    }
+  }
+
   if (isAddNewRow && clickType === MouseClickType.SINGLE_CLICK && x < totalColumnsWidth.value - scrollLeft.value) {
     if (isAddingEmptyRowAllowed.value) {
       if (isGroupBy.value) {
         const elem = _elementMap.findElementAtWithX(x, y, ElementTypes.EDIT_NEW_ROW_METHOD)
 
         if (elem) {
+          if (prevMenuState.openAddNewRowDropdown?.join('-') === groupPath?.join('-')) {
+            isDropdownVisible.value = true
+            openAddNewRowDropdown.value = []
+            requestAnimationFrame(triggerRefreshCanvas)
+            return
+          }
+
           openAddNewRowDropdown.value = groupPath
           isDropdownVisible.value = true
           overlayStyle.value = {
-            top: `${rect.top + elem.y}px`,
-            left: `${rect.left + x - elem.width}px`,
+            top: `${rect.top + elem.y - 120}px`,
+            left: `${rect.left + x + 140}px`,
             width: elem.width,
             height: `36px`,
             position: 'fixed',
@@ -1280,6 +1338,8 @@ async function handleMouseUp(e: MouseEvent, _elementMap: CanvasElement) {
           openNewRecordHandler({ overwrite: setGroup, path: groupPath })
         }
       } else {
+        if (removeInlineAddRecord.value) return
+
         await addEmptyRow()
       }
     }
@@ -1625,10 +1685,23 @@ const handleMouseMove = (e: MouseEvent) => {
     const y = e.clientY - rect.top
     if (y <= 32 && resizeableColumn.value) {
       resizeMouseMove(e)
+    } else if (mousePosition.y > height.value - 36) {
+      cursor = mousePosition.x < totalColumnsWidth.value - scrollLeft.value ? 'pointer' : 'auto'
+      setCursor(cursor)
+      requestAnimationFrame(triggerRefreshCanvas)
+      return
     } else {
       const element = elementMap.findElementAt(mousePosition.x, mousePosition.y, [ElementTypes.ADD_NEW_ROW, ElementTypes.ROW])
 
       if (element) {
+        if (
+          removeInlineAddRecord.value &&
+          !element?.group &&
+          element?.rowIndex &&
+          element?.rowIndex >= EXTERNAL_SOURCE_VISIBLE_ROWS
+        )
+          return
+
         hoverRow.value = {
           rowIndex: element?.rowIndex,
           path: generateGroupPath(element?.group),
@@ -1676,10 +1749,6 @@ const handleMouseMove = (e: MouseEvent) => {
       const row = element?.row
       cursor = getRowMetaCursor({ row, x: mousePosition.x, group: element?.group }) || cursor
     }
-  }
-
-  if (mousePosition.y > height.value - 36) {
-    cursor = mousePosition.x < totalColumnsWidth.value - scrollLeft.value ? 'pointer' : 'auto'
   }
 
   if (cursor) setCursor(cursor)
@@ -1889,7 +1958,14 @@ function openColumnCreate(data: any) {
 }
 
 async function addEmptyRow(row?: number, skipUpdate = false, before?: string, overwrite = {}, path: Array<number> = []) {
+  if (showRecordPlanLimitExceededModal({ focusBtn: null })) return
+
+  if (removeInlineAddRecord.value && !skipUpdate && !before && !row && !path.length) {
+    return
+  }
+
   const dataCache = getDataCache(path)
+
   clearInvalidRows?.(path, {
     onGroupRowChange,
   })
@@ -1937,7 +2013,7 @@ const callAddNewRow = (context: { row: number; col: number; path: Array<number> 
   }
 }
 
-const onNavigate = (dir: NavigateDir) => {
+const onNavigate = async (dir: NavigateDir) => {
   if (ncIsNullOrUndefined(activeCell.value?.row) || ncIsNullOrUndefined(activeCell.value?.column)) return
 
   const path = editEnabled.value?.path || activeCell.value.path
@@ -1966,7 +2042,12 @@ const onNavigate = (dir: NavigateDir) => {
       }
       break
   }
-  onActiveCellChanged()
+  // When editCell Unmounts, it triggers the update of the record
+  // If onActiveCellCHanged is triggered simultaneously, it clear the record in cacheRows and the update happends in the next record
+  // So call onActiveCellChanged in next tick. This ensured update is triggered before clearing from cached rows
+  await nextTick(() => {
+    onActiveCellChanged()
+  })
   selection.value.startRange({ row: activeCell.value.row, col: activeCell.value.column })
   selection.value.endRange({ row: activeCell.value.row, col: activeCell.value.column })
 
@@ -2097,7 +2178,7 @@ onClickOutside(
       isExpandedCellInputExist() ||
       isLinkDropdownExist() ||
       isGeneralOverlayActive() ||
-      (element && hasAncestorWithClass(element, 'ant-select-dropdown'))
+      (element && hasAncestorWithClass(element, ['ant-select-dropdown', 'nc-dropdown']))
     ) {
       return
     }
@@ -2157,6 +2238,18 @@ useActiveKeydownListener(
   },
   {
     isGridCell: true,
+    immediate: true,
+  },
+)
+
+watch(
+  removeInlineAddRecord,
+  (newValue) => {
+    if (isAddNewRecordGridMode.value && newValue) {
+      setAddNewRecordGridMode(!newValue)
+    }
+  },
+  {
     immediate: true,
   },
 )
@@ -2263,15 +2356,20 @@ defineExpose({
               willChange: 'top, left, width, height',
             }"
             class="nc-canvas-table-editable-cell-wrapper pointer-events-auto"
-            :class="{ [`row-height-${rowHeightEnum ?? 1}`]: true, 'on-stick': isClamped }"
+            :class="{ [`row-height-${rowHeightEnum ?? 1}`]: true, 'on-stick': isClamped.isStuck }"
           >
             <div
               ref="activeCellElement"
-              class="relative top-[2.5px] left-[2.5px] w-[calc(100%-5px)] h-[calc(100%-5px)] rounded-br-[9px] bg-white"
+              class="relative w-[calc(100%-5px)] h-[calc(100%-5px)] rounded-br-[9px] bg-white"
               :class="{
                 'px-[0.550rem]': !noPadding && !editEnabled.fixed,
                 'px-[0.49rem]': editEnabled.fixed,
-                'top-[0.5px] left-[-1px]': isClamped,
+                'top-[0.5px]': isGroupBy && isClamped.isStuck,
+                'top-[2.5px]': isGroupBy,
+                'left-[2.5px] ': isGroupBy && !editEnabled.fixed,
+                'left-[2px] ': isGroupBy && editEnabled.fixed,
+                'left-[-1px] top-[2px]': !isGroupBy && isClamped.isStuck,
+                'left-[2px] top-[3.5px]': !isGroupBy && !isClamped.isStuck,
               }"
               @click="cellClickHook.trigger($event)"
             >
@@ -2325,7 +2423,11 @@ defineExpose({
         placement="bottomRight"
         @visible-change="onVisibilityChange"
       >
-        <div v-if="isDropdownVisible" :style="overlayStyle" class="hide pointer-events-none"></div>
+        <div
+          v-if="openColumnDropdownField || isCreateOrEditColumnDropdownOpen || openAggregationField || openAddNewRowDropdown"
+          :style="overlayStyle"
+          class="hide pointer-events-none"
+        ></div>
         <template #overlay>
           <Aggregation v-if="openAggregationField" v-model:column="openAggregationField" class="canvas-aggregation" />
           <SmartsheetHeaderColumnMenu
@@ -2363,7 +2465,7 @@ defineExpose({
       </NcDropdown>
     </template>
     <div class="absolute bottom-12 z-5 left-2" @click.stop>
-      <NcDropdown v-if="isAddingEmptyRowAllowed">
+      <NcDropdown v-if="isAddingEmptyRowAllowed && !removeInlineAddRecord">
         <div class="flex shadow-nc-sm rounded-lg">
           <NcButton
             v-if="isMobileMode"

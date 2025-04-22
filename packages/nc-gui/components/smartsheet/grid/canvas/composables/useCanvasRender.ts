@@ -1,12 +1,14 @@
 import type { WritableComputedRef } from '@vue/reactivity'
-import { AllAggregations, type ColumnType, type TableType, UITypes } from 'nocodb-sdk'
+import { AllAggregations, type ColumnType, type TableType, UITypes, isCreatedOrLastModifiedByCol } from 'nocodb-sdk'
 import type { Composer } from 'vue-i18n'
 import tinycolor from 'tinycolor2'
 import {
   isBoxHovered,
   renderCheckbox,
   renderIconButton,
+  renderMultiLineText,
   renderSingleLineText,
+  renderTag,
   renderTagLabel,
   roundedRect,
   truncateText,
@@ -37,6 +39,7 @@ import {
 import { parseKey } from '../../../../../utils/groupbyUtils'
 import type { CanvasElement } from '../utils/CanvasElement'
 import { ElementTypes } from '../utils/CanvasElement'
+import type { RenderTagProps } from '../utils/types'
 
 export function useCanvasRender({
   width,
@@ -73,6 +76,7 @@ export function useCanvasRender({
   editEnabled,
   totalWidth,
   totalRows,
+  actualTotalRows,
   t,
   readOnly,
   isFieldEditAllowed,
@@ -87,6 +91,8 @@ export function useCanvasRender({
   getDataCache,
   getRows,
   draggedRowGroupPath,
+  removeInlineAddRecord,
+  upgradeModalInlineState,
 }: {
   width: Ref<number>
   height: Ref<number>
@@ -129,6 +135,7 @@ export function useCanvasRender({
   meta: ComputedRef<TableType>
   editEnabled: Ref<CanvasEditEnabledType>
   totalRows: Ref<number>
+  actualTotalRows: Ref<number>
   totalGroups: Ref<number>
   t: Composer['t']
   readOnly: Ref<boolean>
@@ -157,11 +164,17 @@ export function useCanvasRender({
   }
   getRows: (start: number, end: number, path?: Array<number>) => Promise<Row[]>
   draggedRowGroupPath: Ref<number[]>
+  removeInlineAddRecord: Ref<boolean>
+  upgradeModalInlineState: Ref<{
+    isHoveredLearnMore: boolean
+    isHoveredUpgrade: boolean
+  }>
 }) {
   const canvasRef = ref<HTMLCanvasElement>()
   const colResizeHoveredColIds = ref(new Set())
   const { tryShowTooltip } = useTooltipStore()
   const { isMobileMode, isAddNewRecordGridMode, appInfo } = useGlobal()
+  const { isWsOwner } = useEeConfig()
   const isLocked = inject(IsLockedInj, ref(false))
 
   const fixedCols = computed(() => columns.value.filter((c) => c.fixed))
@@ -923,6 +936,135 @@ export function useCanvasRender({
     }
   }
 
+  const renderUpgradeModalInline = (ctx: CanvasRenderingContext2D, yOffset: number) => {
+    if (!removeInlineAddRecord.value) return
+
+    yOffset = yOffset + 120
+
+    const { lines } = renderMultiLineText(ctx, {
+      x: width.value / 2,
+      y: yOffset,
+      text: t('upgrade.upgradeToSeeMoreRecordInline'),
+      maxWidth: Math.min(width.value, 520),
+      fillStyle: '#101015',
+      fontFamily: `700 16px Manrope`,
+      height: 100,
+      lineHeight: 24,
+      maxLines: 2,
+      textAlign: 'center',
+    })
+
+    yOffset = yOffset + lines.length * 24 + 8
+
+    const totalRecords = Math.max(totalRows.value, actualTotalRows.value ?? 0)
+
+    const { lines: subtitleLines } = renderMultiLineText(ctx, {
+      x: width.value / 2,
+      y: yOffset,
+      text: t('upgrade.upgradeToSeeMoreRecordInlineSubtitle', {
+        limit: 100,
+        total: totalRecords,
+        remaining: totalRecords - 100,
+      }),
+      maxWidth: Math.min(width.value, 520),
+      fillStyle: '#4A5268',
+      fontFamily: `500 14px Manrope`,
+      height: 100,
+      lineHeight: 20,
+      maxLines: 4,
+      textAlign: 'center',
+    })
+
+    yOffset = yOffset + subtitleLines.length * 20 + 20
+
+    const renderLearnMoreBtn = (render = false, xOffset: number = width.value / 2) => {
+      return renderSingleLineText(ctx, {
+        x: xOffset + 10,
+        y: yOffset,
+        text: t('msg.learnMore'),
+        maxWidth: 120,
+        height: 32,
+        verticalAlign: 'middle',
+        fontFamily: '600 14px Manrope',
+        fillStyle: '#374151',
+        isTagLabel: true,
+        render,
+      })
+    }
+
+    const renderUpgradeBtn = (render = false, xOffset: number = width.value / 2) => {
+      return renderSingleLineText(ctx, {
+        x: xOffset + 10,
+        y: yOffset,
+        text: isWsOwner.value ? t('general.upgrade') : t('general.requestUpgrade'),
+        maxWidth: 120,
+        height: 32,
+        verticalAlign: 'middle',
+        fontFamily: '600 14px Manrope',
+        fillStyle: 'white',
+        isTagLabel: true,
+        render,
+      })
+    }
+
+    const learnMoreBtnInfo = renderLearnMoreBtn(false)
+
+    const UpgradeBtnInfo = renderUpgradeBtn(false)
+
+    /**
+     * learn more button width + upgrade button width + gap
+     */
+    const buttonsWidth = learnMoreBtnInfo.width + 10 * 2 + UpgradeBtnInfo.width + 10 * 2 + 12
+
+    const xOffSet = width.value / 2 - buttonsWidth / 2
+    yOffset = yOffset + 20
+
+    const isLearnMoreBtnHovered = isBoxHovered(
+      { x: xOffSet, y: yOffset, width: learnMoreBtnInfo.width + 10 * 2, height: 32 },
+      mousePosition,
+    )
+
+    const _renderTag = (params: Partial<RenderTagProps>) => {
+      renderTag(ctx, {
+        x: xOffSet,
+        radius: 8,
+        y: yOffset,
+        height: 32,
+        width: 100,
+        ...params,
+      })
+    }
+
+    _renderTag({
+      x: xOffSet,
+      width: learnMoreBtnInfo.width + 10 * 2,
+      borderColor: '#E7E7E9',
+      borderWidth: 1,
+      fillStyle: isLearnMoreBtnHovered ? themeV3Colors.gray['100'] : 'white',
+    })
+
+    renderLearnMoreBtn(true, xOffSet)
+
+    const isUpgradeBtnHovered = isBoxHovered(
+      { x: xOffSet + learnMoreBtnInfo.width + 10 * 2 + 12, y: yOffset, width: UpgradeBtnInfo.width + 10 * 2, height: 32 },
+      mousePosition,
+    )
+
+    _renderTag({
+      x: xOffSet + learnMoreBtnInfo.width + 10 * 2 + 12,
+      width: UpgradeBtnInfo.width + 10 * 2,
+      fillStyle: isUpgradeBtnHovered ? themeV3Colors.brand['600'] : themeV3Colors.brand['500'],
+    })
+
+    renderUpgradeBtn(true, xOffSet + learnMoreBtnInfo.width + 10 * 2 + 12)
+
+    upgradeModalInlineState.value.isHoveredLearnMore = isLearnMoreBtnHovered
+    upgradeModalInlineState.value.isHoveredUpgrade = isUpgradeBtnHovered
+    if (isLearnMoreBtnHovered || isUpgradeBtnHovered) {
+      setCursor('pointer')
+    }
+  }
+
   function renderRow(
     ctx: CanvasRenderingContext2D,
     {
@@ -1313,7 +1455,11 @@ export function useCanvasRender({
     const dataCache = getDataCache()
 
     for (let rowIdx = startRowIndex; rowIdx < endRowIndex; rowIdx++) {
-      if (yOffset + rowHeight.value > 0 && yOffset < height.value) {
+      if (
+        yOffset + rowHeight.value > 0 &&
+        yOffset < height.value &&
+        (!removeInlineAddRecord.value || rowIdx <= EXTERNAL_SOURCE_TOTAL_ROWS)
+      ) {
         const row = dataCache.cachedRows.value.get(rowIdx)
 
         if (rowIdx === draggedRowIndex.value) {
@@ -1353,6 +1499,14 @@ export function useCanvasRender({
         ctx.lineTo(adjustedWidth, yOffset + rowHeight.value)
         ctx.stroke()
 
+        // Since blur is not working we can use just fill rect
+        if (removeInlineAddRecord.value && rowIdx >= EXTERNAL_SOURCE_VISIBLE_ROWS) {
+          ctx.fillStyle = 'rgba(231, 231, 233, 0.8)'
+          ctx.fillRect(0, yOffset, adjustedWidth, rowHeight.value)
+
+          ctx.fill()
+        }
+
         if (row?.rowMeta.isValidationFailed || row?.rowMeta.isRowOrderUpdated) {
           warningRow = { row, yOffset }
         }
@@ -1362,7 +1516,7 @@ export function useCanvasRender({
     }
 
     // Add New Row
-    if (isAddingEmptyRowAllowed.value && !isMobileMode.value) {
+    if (isAddingEmptyRowAllowed.value && !isMobileMode.value && !removeInlineAddRecord.value) {
       const isNewRowHovered = isBoxHovered(
         {
           x: 0,
@@ -1402,7 +1556,7 @@ export function useCanvasRender({
       // Warning top border
       ctx.strokeStyle = 'orange'
       ctx.beginPath()
-      ctx.moveTo(0, warningRow.yOffset - 2)
+      ctx.moveTo(0, warningRow.yOffset)
       ctx.lineTo(adjustedWidth, warningRow.yOffset)
       ctx.lineWidth = 2
       ctx.stroke()
@@ -1456,6 +1610,7 @@ export function useCanvasRender({
       ctx.lineWidth = 1
     }
     renderFillHandle(ctx)
+    renderUpgradeModalInline(ctx, yOffset)
 
     return activeState
   }
@@ -1675,7 +1830,7 @@ export function useCanvasRender({
           ctx.restore()
         }
 
-        const count = isGroupBy.value ? totalGroups.value : totalRows.value
+        const count = isGroupBy.value ? totalGroups.value : Math.max(totalRows.value, actualTotalRows.value ?? 0)
         const label = isGroupBy.value
           ? count !== 1
             ? t('objects.groups')
@@ -2003,7 +2158,7 @@ export function useCanvasRender({
         ctx,
         level * 13,
         yOffset,
-        adjustedWidth,
+        adjustedWidth + 2,
         COLUMN_HEADER_HEIGHT_IN_PX,
         {
           bottomLeft: 8,
@@ -2021,7 +2176,7 @@ export function useCanvasRender({
         },
       )
       spriteLoader.renderIcon(ctx, {
-        icon: 'ncPlus',
+        icon: isAddNewRecordGridMode.value ? 'ncPlus' : 'form',
         color: isNewRowHovered ? '#000000' : '#4a5268',
         x: 16 + level * 13,
         y: yOffset + 9,
@@ -2029,26 +2184,24 @@ export function useCanvasRender({
       })
 
       const { width: renderedWidth } = renderSingleLineText(ctx, {
-        x: 16 + 27 + level * 13,
+        x: 16 + 20 + level * 13,
         y: yOffset + 2,
         fontFamily: '600 13px Manrope',
         height: COLUMN_HEADER_HEIGHT_IN_PX,
         fillStyle: '#374151',
-        text: isAddNewRecordGridMode.value
-          ? `${t('activity.newRecord')}`
-          : `${t('activity.newRecord')} - ${t('objects.viewType.form')}`,
+        text: `${t('activity.newRecord')}`,
       })
 
       spriteLoader.renderIcon(ctx, {
         icon: 'chevronDown',
         color: isNewRowHovered ? '#000000' : '#4a5268',
-        x: 16 + 27 + level * 13 + renderedWidth + 12,
-        y: yOffset + 9,
+        x: 16 + 20 + level * 13 + renderedWidth + 12,
+        y: yOffset + 10,
         size: 14,
       })
 
       elementMap.addElement({
-        x: 16 + 27 + level * 13 + renderedWidth + 12,
+        x: 16 + 20 + level * 13 + renderedWidth + 12,
         y: yOffset + 9,
         width: 16,
         group,
@@ -2081,7 +2234,7 @@ export function useCanvasRender({
       // Warning top border
       ctx.strokeStyle = 'orange'
       ctx.beginPath()
-      ctx.moveTo(gXOffset, warningRow.yOffset - 2)
+      ctx.moveTo(gXOffset, warningRow.yOffset)
       ctx.lineTo(adjustedWidth + gXOffset + 2, warningRow.yOffset)
       ctx.lineWidth = 2
       ctx.stroke()
@@ -2515,7 +2668,7 @@ export function useCanvasRender({
         const countRender = renderSingleLineText(ctx, {
           text: `${group?.count ?? '-'}`,
           x: xOffset + mergedWidth - 12,
-          y: contentY,
+          y: contentY - 1,
           height: GROUP_HEADER_HEIGHT,
           verticalAlign: 'middle',
           fontFamily: '600 12px Manrope',
@@ -2527,7 +2680,7 @@ export function useCanvasRender({
         const contentRender = renderSingleLineText(ctx, {
           text: 'Count',
           x: xOffset + mergedWidth - 12 - countWidth - 8,
-          y: contentY,
+          y: contentY - 1,
           height: GROUP_HEADER_HEIGHT,
           verticalAlign: 'middle',
           textAlign: 'right',
@@ -2540,18 +2693,31 @@ export function useCanvasRender({
         ctx.save()
 
         ctx.letterSpacing = '1px'
-        renderSingleLineText(ctx, {
+        const { isTruncated } = renderSingleLineText(ctx, {
           text: (group?.column?.title ?? '').toUpperCase(),
           fillStyle: '#4A5268',
           x: contentX,
+          maxWidth: availableWidth - 20 - countWidth,
           fontFamily: '600 10px Manrope',
           y: groupHeaderY,
           py: 6,
         })
+        if (isTruncated) {
+          tryShowTooltip({
+            mousePosition,
+            text: (group?.column?.title ?? '').toUpperCase(),
+            rect: {
+              x: contentX,
+              y: groupHeaderY,
+              height: 16,
+              width: availableWidth - 20 - countWidth,
+            },
+          })
+        }
 
         ctx.restore()
 
-        renderGroupContent(ctx, group, contentX, contentY + 22, availableWidth - contentWidth - 20 - countWidth, i)
+        renderGroupContent(ctx, group, contentX, contentY + 22, availableWidth - contentWidth - countWidth, i)
 
         currentOffset = tempCurrentOffset
       }
@@ -2636,6 +2802,7 @@ export function useCanvasRender({
             tagRadius: 12,
             tagBgColor: color,
             tagSpacing: 0,
+            tagFontFamily: '700 13px Manrope',
           },
         } as any)
 
@@ -2664,18 +2831,28 @@ export function useCanvasRender({
       const displayText =
         group.value in GROUP_BY_VARS.VAR_TITLES ? GROUP_BY_VARS.VAR_TITLES[group.value] : parseKey(group)?.join(', ')
 
+      const isCheckBox = group.column?.uidt === UITypes.Checkbox
+
       renderSingleLineText(ctx, {
         text: displayText,
-        fillStyle: '#6A7184',
+        fillStyle: isCheckBox ? '#1f293a' : '#6A7184',
         fontFamily: '700 13px Manrope',
         x,
         y: y - GROUP_HEADER_HEIGHT / 2 + 8,
         height: 20,
         maxWidth,
       })
-    } else if (isUser(group.column)) {
+    } else if (isUser(group.column) || isCreatedOrLastModifiedByCol(group.column)) {
+      let val = group.value
+
+      try {
+        val = JSON.parse(group.value)
+      } catch (e) {
+        val = group.value
+      }
+
       renderCell(ctx, group.column, {
-        value: group.value,
+        value: val,
         x: x - 11,
         y: y - 16,
         width: maxWidth,
