@@ -28,6 +28,7 @@ export function useCanvasTable({
   clearCache,
   chunkStates,
   totalRows,
+  actualTotalRows,
   loadData,
   scrollLeft,
   scrollTop,
@@ -62,7 +63,8 @@ export function useCanvasTable({
   clearCache: (visibleStartIndex: number, visibleEndIndex: number, path?: Array<number>) => void
   chunkStates: Ref<Array<'loading' | 'loaded' | undefined>>
   totalRows: Ref<number>
-  loadData: (params?: any, shouldShowLoading?: boolean) => Promise<Array<Row>>
+  actualTotalRows: Ref<number>
+  loadData: (params?: any, shouldShowLoading?: boolean, path?: Array<number>) => Promise<Array<Row>>
   scrollLeft: Ref<number>
   scrollTop: Ref<number>
   width: Ref<number>
@@ -180,6 +182,10 @@ export function useCanvasTable({
   const draggedRowIndex = ref(-1)
   const draggedRowGroupPath = ref([])
   const targetRowIndex = ref(-1)
+  const upgradeModalInlineState = ref({
+    isHoveredLearnMore: false,
+    isHoveredUpgrade: false,
+  })
 
   const { isMobileMode } = useGlobal()
   const { $api } = useNuxtApp()
@@ -194,6 +200,8 @@ export function useCanvasTable({
     isPkAvail: isPrimaryKeyAvailable,
     view,
     isSqlView,
+    isExternalSource,
+    isAlreadyShownUpgradeModal,
   } = useSmartsheetStoreOrThrow()
   const { addUndo, defineViewScope } = useUndoRedo()
   const { activeView } = storeToRefs(useViewsStore())
@@ -203,6 +211,7 @@ export function useCanvasTable({
   const { isFeatureEnabled } = useBetaFeatureToggle()
   const automationStore = useAutomationStore()
   const tooltipStore = useTooltipStore()
+  const { blockExternalSourceRecordVisibility } = useEeConfig()
 
   const fields = inject(FieldsInj, ref([]))
 
@@ -223,6 +232,14 @@ export function useCanvasTable({
   const actionManager = new ActionManager($api, loadAutomation, generateRows, meta, triggerRefreshCanvas, getDataCache)
 
   const isGroupBy = computed(() => !!groupByColumns.value?.length)
+
+  const removeInlineAddRecord = computed(() => {
+    return (
+      !isGroupBy.value &&
+      blockExternalSourceRecordVisibility(isExternalSource.value) &&
+      totalRows.value >= EXTERNAL_SOURCE_VISIBLE_ROWS
+    )
+  })
 
   const isOrderColumnExists = computed(() => (meta.value?.columns ?? []).some((col) => isOrderCol(col)))
 
@@ -311,7 +328,7 @@ export function useCanvasTable({
           title: f.title,
           uidt: f.uidt,
           width: gridViewCol.width,
-          fixed: isMobileMode.value ? false : !!f.pv,
+          fixed: isMobileMode.value && !isGroupBy.value ? false : !!f.pv,
           readonly: !isAddingEmptyRowAllowed.value || isDataReadOnly.value,
           isCellEditable: !isReadonly(f),
           pv: !!f.pv,
@@ -575,6 +592,8 @@ export function useCanvasTable({
 
     // If selection is single cell and cell is virtual, hide fill handler
     if (selection.value.isSingleCell()) {
+      if (removeInlineAddRecord.value && selection.value.start.row >= EXTERNAL_SOURCE_VISIBLE_ROWS) return null
+
       const selectedColumn = columns.value[selection.value.end.col]
       // If the cell is virtual or system column, hide the fill handler
       if (
@@ -682,6 +701,7 @@ export function useCanvasTable({
     editEnabled,
     totalWidth,
     totalRows,
+    actualTotalRows,
     t,
     isAddingColumnAllowed,
     readOnly,
@@ -697,6 +717,8 @@ export function useCanvasTable({
     getRows,
     draggedRowGroupPath,
     isAddingEmptyRowAllowed,
+    removeInlineAddRecord,
+    upgradeModalInlineState,
   })
 
   const { handleDragStart } = useRowReorder({
@@ -724,6 +746,8 @@ export function useCanvasTable({
     loadData,
     rowSlice,
     triggerRefreshCanvas,
+    isAlreadyShownUpgradeModal,
+    isExternalSource,
   })
 
   const { clearCell, copyValue, isPasteable } = useCopyPaste({
@@ -938,6 +962,7 @@ export function useCanvasTable({
     onActiveCellChanged,
     addNewColumn,
     handleCellKeyDown,
+    removeInlineAddRecord,
   })
 
   const {
@@ -1031,7 +1056,7 @@ export function useCanvasTable({
     const rowIndex = row.rowMeta.rowIndex + 1!
     const path = row.rowMeta.path
 
-    if (!path) return
+    if (isGroupBy.value && !path && !path?.legth) return
 
     const yOffset =
       calculateGroupRowTop(cachedGroups.value, path, rowIndex, rowHeight.value, isAddingEmptyRowAllowed.value) +
@@ -1069,7 +1094,7 @@ export function useCanvasTable({
       row,
       minHeight: rowHeight.value,
       height: [UITypes.LongText, UITypes.Formula].includes(column.uidt) ? 'auto' : rowHeight.value + 2,
-      width: parseCellWidth(clickedColumn.width) + ([UITypes.LongText, UITypes.Formula].includes(column.uidt) ? 2 : 0),
+      width: parseCellWidth(clickedColumn.width) + ([UITypes.LongText, UITypes.Formula].includes(column.uidt) ? 2 : 0) + 2,
       fixed: clickedColumn.fixed,
       path,
     }
@@ -1083,6 +1108,8 @@ export function useCanvasTable({
     row = typeof row === 'number' ? cachedRows.value.get(row)! : row
 
     if (!row || !column) return null
+
+    if (removeInlineAddRecord.value && row.rowMeta.rowIndex && row.rowMeta.rowIndex >= EXTERNAL_SOURCE_VISIBLE_ROWS) return
 
     if (!isDataEditAllowed.value || readOnly.value || isPublicView.value || !isAddingEmptyRowAllowed.value) {
       if (
@@ -1252,5 +1279,7 @@ export function useCanvasTable({
     isFieldEditAllowed,
     isDataEditAllowed,
     isContextMenuAllowed,
+    removeInlineAddRecord,
+    upgradeModalInlineState,
   }
 }

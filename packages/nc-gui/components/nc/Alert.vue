@@ -1,11 +1,4 @@
 <script lang="ts" setup>
-/**
- * NcAlert Component
- *
- * A customizable alert component built with Ant Design Vue.
- * It supports various alert types, optional icons, copy functionality, and automatic dismissal.
- */
-
 import type { AlertProps } from 'ant-design-vue/es'
 import { getI18n } from '~/plugins/a.i18n'
 
@@ -14,8 +7,23 @@ import { getI18n } from '~/plugins/a.i18n'
  *
  * A customizable alert component with optional icons, descriptions, actions, and notifications.
  * Can be used as a standalone alert or inside the `message` notification system.
+ *
+ * @example
+ * ```vue
+ * <NcAlert
+ *   type="error"
+ *   message="Something went wrong"
+ *   description="We couldn’t complete your request. Please try again."
+ *   :closable="true"
+ *   :copy-text="'ERR_CODE_404'"
+ * />
+ * ```
  */
-export interface NcAlertProps extends Pick<AlertProps, 'type' | 'showIcon' | 'message' | 'description' | 'closable'> {
+export interface NcAlertProps extends Pick<AlertProps, 'showIcon' | 'message' | 'description' | 'closable'> {
+  /**
+   * type toast will be used only in message.toast('simple toast message')
+   */
+  type: AlertProps['type'] | 'toast'
   /**
    * Controls the visibility of the alert.
    * @default true
@@ -338,6 +346,10 @@ onUnmounted(() => {
         @apply line-clamp-2;
       }
     }
+
+    &.nc-alert-type-toast {
+      @apply min-w-[fit-content]  md:min-w-[fit-content] max-w-[350px] w-[fit-content];
+    }
   }
 
   &.no-border {
@@ -413,6 +425,8 @@ onUnmounted(() => {
 
 <style lang="scss">
 .ant-message {
+  @apply z-1051;
+
   .ant-message-notice {
     &:has(.nc-alert-notification) {
       .ant-message-notice-content {
@@ -420,6 +434,14 @@ onUnmounted(() => {
 
         .ant-message-custom-content > span {
           @apply flex-none w-full block;
+        }
+
+        &:has(.nc-alert-type-toast) {
+          @apply py-2.5 px-3 bg-gray-700;
+
+          .nc-alert-description {
+            @apply text-white;
+          }
         }
       }
     }

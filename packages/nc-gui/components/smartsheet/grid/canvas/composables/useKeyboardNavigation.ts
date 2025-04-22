@@ -28,6 +28,7 @@ export function useKeyboardNavigation({
   handleCellKeyDown,
   isGroupBy,
   getDataCache,
+  removeInlineAddRecord,
 }: {
   isGroupBy: ComputedRef<boolean>
   activeCell: Ref<{ row: number; column: number; path?: Array<number> }>
@@ -60,7 +61,14 @@ export function useKeyboardNavigation({
     path?: Array<number>,
   ) => Row | undefined
   onActiveCellChanged: () => void
-  handleCellKeyDown: (ctx: { e: KeyboardEvent; row: Row; column: CanvasGridColumn; value: any; pk: any }) => Promise<boolean>
+  handleCellKeyDown: (ctx: {
+    e: KeyboardEvent
+    row: Row
+    column: CanvasGridColumn
+    value: any
+    pk: any
+    path: Array<number>
+  }) => Promise<boolean | void>
   getDataCache: (path?: Array<number>) => {
     cachedRows: Ref<Map<number, Row>>
     totalRows: Ref<number>
@@ -68,6 +76,7 @@ export function useKeyboardNavigation({
     selectedRows: ComputedRef<Array<Row>>
     isRowSortRequiredRows: ComputedRef<Array<Row>>
   }
+  removeInlineAddRecord: Ref<boolean>
 }) {
   const { isDataReadOnly } = useRoles()
   const { $e } = useNuxtApp()
@@ -121,6 +130,9 @@ export function useKeyboardNavigation({
         const row = cachedRows.value.get(activeCell.value.row)
 
         if (!row) return
+
+        if (removeInlineAddRecord.value && row.rowMeta.rowIndex && row.rowMeta.rowIndex > EXTERNAL_SOURCE_VISIBLE_ROWS) return
+
         expandForm(row, undefined, false, groupPath)
         return
       }
@@ -130,6 +142,8 @@ export function useKeyboardNavigation({
       const column = columns.value[activeCell.value.column]
       const row = cachedRows.value.get(activeCell.value.row)
       if (row && column?.columnObj && !editEnabled.value) {
+        if (removeInlineAddRecord.value && row.rowMeta.rowIndex && row.rowMeta.rowIndex >= EXTERNAL_SOURCE_VISIBLE_ROWS) return
+
         const value = row.row[column.columnObj.title]
         const pk = extractPkFromRow(row.row, meta.value?.columns ?? [])
         const res = await handleCellKeyDown({ e, column, row, pk, value, path: groupPath })
@@ -164,7 +178,7 @@ export function useKeyboardNavigation({
       switch (e.keyCode) {
         case 82: {
           // ALT + R
-          if (isAddingEmptyRowAllowed.value) {
+          if (isAddingEmptyRowAllowed.value && !removeInlineAddRecord.value) {
             $e('c:shortcut', { key: 'ALT + R' })
             addEmptyRow(undefined, undefined, undefined, defaultData, groupPath)
             activeCell.value.row = totalRows.value
@@ -193,6 +207,10 @@ export function useKeyboardNavigation({
         ) {
           e.preventDefault()
           if (selection.value.isSingleCell()) {
+            if (removeInlineAddRecord.value && activeCell.value.row >= EXTERNAL_SOURCE_VISIBLE_ROWS) {
+              return
+            }
+
             await clearCell?.({
               row: activeCell.value.row,
               col: activeCell.value.column,
@@ -213,7 +231,12 @@ export function useKeyboardNavigation({
           const column = columns.value[activeCell.value.column]
           if (column?.columnObj?.uidt) {
             if (!NO_EDITABLE_CELL.includes(column.columnObj.uidt as UITypes) && !column.columnObj.readonly) {
+              if (removeInlineAddRecord.value && activeCell.value.row && activeCell.value.row >= EXTERNAL_SOURCE_VISIBLE_ROWS) {
+                return
+              }
+
               const row = cachedRows.value.get(activeCell.value.row)
+
               makeCellEditable(row, columns.value[activeCell.value.column]!)
               selection.value.clear()
             }
@@ -226,6 +249,7 @@ export function useKeyboardNavigation({
           }
           editEnabled.value = null
           activeCell.value.row++
+          onActiveCellChanged()
         }
         break
 
@@ -324,7 +348,7 @@ export function useKeyboardNavigation({
         let isAdded = false
         e.preventDefault()
         if (!e.shiftKey && activeCell.value.row === lastRow && activeCell.value.column === lastCol) {
-          if (isAddingEmptyRowAllowed.value) {
+          if (isAddingEmptyRowAllowed.value && !removeInlineAddRecord.value) {
             addEmptyRow(undefined, false, undefined, defaultData, groupPath)
             isAdded = true
           }

@@ -1796,6 +1796,10 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
     const selectors = [];
     const groupBySelectors = [];
     const getAlias = getAliasGenerator('__nc_gb');
+    const subGroupColumn = columns.find(
+      (c) =>
+        c.title === subGroupColumnName || c.column_name === subGroupColumnName,
+    );
 
     const processColumn = async (col: string, isSubGroup: boolean = false) => {
       let column = columns.find(
@@ -1904,6 +1908,22 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
           }
           break;
         }
+        case UITypes.JSON: {
+          if (this.dbDriver.clientType() === 'pg') {
+            const defaultColumnName = await getColumnName(
+              this.context,
+              column,
+              columns,
+            );
+            columnQuery = this.dbDriver.raw('(??)::jsonb', [defaultColumnName]);
+            if (!isSubGroup) {
+              selectors.push(
+                this.dbDriver.raw(`?? as ??`, [columnQuery, alias]),
+              );
+            }
+            break;
+          }
+        }
         default: {
           const defaultColumnName = await getColumnName(
             this.context,
@@ -1933,12 +1953,13 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
 
     if (subGroupColumnName) {
       const subGroupQuery = await processColumn(subGroupColumnName, true);
+      const subGroupAlias = getAs(subGroupColumn);
       qb.select(
         this.dbDriver.raw(
           `COUNT(DISTINCT COALESCE(${
             this.isPg ? '(??)::text' : '??'
           }, '__null__')) as ??`,
-          [this.dbDriver.raw(subGroupQuery), subGroupColumnName],
+          [this.dbDriver.raw(subGroupQuery), subGroupAlias],
         ),
       );
     }
@@ -2238,6 +2259,23 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
               groupBySelectors.push(getAs(column));
             }
             break;
+          case UITypes.JSON: {
+            if (this.dbDriver.clientType() === 'pg') {
+              const columnName = await getColumnName(
+                this.context,
+                column,
+                columns,
+              );
+              selectors.push(
+                this.dbDriver.raw('(??)::jsonb as ??', [
+                  columnName,
+                  getAs(column),
+                ]),
+              );
+              groupBySelectors.push(getAs(column));
+              break;
+            }
+          }
           default:
             {
               const columnName = await getColumnName(
@@ -3522,6 +3560,11 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
         trx,
         req: request,
       });
+
+      await this.statsUpdate({
+        count: 1,
+      });
+
       return Array.isArray(response) ? response[0] : response;
     } catch (e) {
       await this.errorInsert(e, data, trx, request);
@@ -4054,6 +4097,10 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
         insertData: data,
       });
 
+      await this.statsUpdate({
+        count: 1,
+      });
+
       return response;
     } catch (e) {
       throw e;
@@ -4301,8 +4348,16 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
           req: cookie,
           insertData: datas[0],
         });
+
+        await this.statsUpdate({
+          count: insertedDataList.length,
+        });
       } else if (insertedDatas.length > 1) {
         await this.afterBulkInsert(insertedDataList, this.dbDriver, cookie);
+
+        await this.statsUpdate({
+          count: insertedDataList.length,
+        });
       }
 
       if (updatedDataList.length === 1) {
@@ -4733,6 +4788,10 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
           await this.afterBulkInsert(insertDatas, this.dbDriver, cookie);
         }
       }
+
+      await this.statsUpdate({
+        count: insertDatas.length,
+      });
 
       return responses;
     } catch (e) {
@@ -6419,6 +6478,139 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
     );
   }
 
+  async afterAddOrRemoveChild(
+    commonAuditObj: {
+      opType: AuditV1OperationTypes;
+      model: Model;
+      refModel: Model;
+      columnTitle: string;
+      columnId: string;
+      refColumnTitle: string;
+      refColumnId: string;
+      req: NcRequest;
+    },
+    auditObjs: Array<{
+      rowId: unknown;
+      refRowId: unknown;
+      displayValue?: unknown;
+      refDisplayValue?: unknown;
+      type: RelationTypes;
+    }>,
+  ): Promise<void> {
+    if (!(await this.isDataAuditEnabled())) {
+      return;
+    }
+
+    const { opType, model, refModel, columnTitle, columnId, req } =
+      commonAuditObj;
+
+    // populate missing display values
+    const refBaseModel = await Model.getBaseModelSQL(this.context, {
+      model: refModel,
+      dbDriver: this.dbDriver,
+    });
+
+    await model.getColumns(this.context);
+    await refModel.getColumns(this.context);
+
+    const missingDisplayValues = auditObjs.filter(
+      (auditObj) => !auditObj.displayValue,
+    );
+
+    const missingRefDisplayValues = auditObjs.filter(
+      (auditObj) => !auditObj.refDisplayValue,
+    );
+
+    const displayValueColumn = model.displayValue;
+    const refDisplayValueColumn = refModel.displayValue;
+
+    const displayValueMap = new Map<string, string>();
+    const refDisplayValueMap = new Map<string, string>();
+
+    if (missingDisplayValues.length > 0) {
+      for (let i = 0; i < missingDisplayValues.length; i += 100) {
+        const chunk = missingDisplayValues.slice(i * 100, (i + 1) * 100);
+
+        const displayValues = await this.list(
+          {
+            pks: chunk.map((auditObj) => auditObj.rowId).join(','),
+          },
+          {
+            limitOverride: chunk.length,
+            ignoreViewFilterAndSort: true,
+          },
+        );
+
+        for (const displayValue of displayValues) {
+          const pk = this.extractPksValues(displayValue, true);
+
+          displayValueMap.set(pk, displayValue[displayValueColumn.title]);
+        }
+      }
+    }
+
+    if (missingRefDisplayValues.length > 0) {
+      for (let i = 0; i < missingRefDisplayValues.length; i += 100) {
+        const chunk = missingRefDisplayValues.slice(i * 100, (i + 1) * 100);
+
+        const refDisplayValues = await refBaseModel.list(
+          {
+            pks: chunk.map((auditObj) => auditObj.refRowId).join(','),
+          },
+          {
+            limitOverride: chunk.length,
+            ignoreViewFilterAndSort: true,
+          },
+        );
+
+        for (const refDisplayValue of refDisplayValues) {
+          const pk = this.extractPksValues(refDisplayValue, true);
+
+          refDisplayValueMap.set(
+            pk,
+            refDisplayValue[refDisplayValueColumn.title],
+          );
+        }
+      }
+    }
+
+    const auditPayloads = await Promise.all(
+      auditObjs.map(async (auditObj) => {
+        if (!auditObj.refDisplayValue) {
+          auditObj.refDisplayValue = refDisplayValueMap.get(
+            `${auditObj.refRowId}`,
+          );
+        }
+        if (!auditObj.displayValue) {
+          auditObj.displayValue = displayValueMap.get(`${auditObj.rowId}`);
+        }
+        // Build and return the audit payload.
+        return generateAuditV1Payload<DataLinkPayload>(opType, {
+          context: {
+            ...this.context,
+            source_id: model.source_id,
+            fk_model_id: model.id,
+            row_id: this.extractPksValues(auditObj.rowId, true) as string,
+          },
+          details: {
+            table_title: model.title,
+            ref_table_title: refModel.title,
+            link_field_title: columnTitle,
+            link_field_id: columnId,
+            row_id: auditObj.rowId,
+            ref_row_id: auditObj.refRowId,
+            display_value: auditObj.displayValue,
+            ref_display_value: auditObj.refDisplayValue,
+            type: auditObj.type,
+          },
+          req,
+        });
+      }),
+    );
+
+    await Audit.insert(auditPayloads);
+  }
+
   async removeChild({
     colId,
     rowId,
@@ -7750,24 +7942,6 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
       this.model.id === parentTable.id ? childTable : parentTable,
     );
 
-    const auditUpdateObj = [] as {
-      pkValue?: Record<string, any>;
-      columnTitle: string;
-      columnId: string;
-      refColumnTitle?: string;
-      rowId: unknown;
-      refRowId?: unknown;
-      req: NcRequest;
-      model: Model;
-      refModel?: Model;
-      displayValue?: unknown;
-      refDisplayValue?: unknown;
-      opSubType:
-        | AuditOperationSubTypes.LINK_RECORD
-        | AuditOperationSubTypes.UNLINK_RECORD;
-      type: RelationTypes;
-    }[];
-
     const auditConfig = {
       childModel: childTable,
       parentModel: parentTable,
@@ -8049,55 +8223,58 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
         break;
     }
 
+    const parentAuditObj = [];
+    const childAuditObj = [];
+
     for (const childId of childIds) {
       const _childId =
         typeof childId === 'object'
           ? Object.values(childId).join('_')
           : childId;
 
-      auditUpdateObj.push({
-        model: auditConfig.parentModel,
-        refModel: auditConfig.childModel,
+      parentAuditObj.push({
         rowId,
         refRowId: _childId,
-        opSubType: AuditOperationSubTypes.LINK_RECORD,
-        columnTitle: auditConfig.parentColTitle,
-        columnId: auditConfig.parentColId,
-        req: cookie,
+        displayValue: row[column.title] ?? row[column.column_name],
         type: colOptions.type as RelationTypes,
       });
 
       if (parentTable.id !== childTable.id) {
-        auditUpdateObj.push({
-          model: auditConfig.childModel,
-          refModel: auditConfig.parentModel,
+        childAuditObj.push({
           rowId: _childId,
           refRowId: rowId,
-          opSubType: AuditOperationSubTypes.LINK_RECORD,
-          columnTitle: auditConfig.childColTitle,
-          columnId: auditConfig.childColId,
-          req: cookie,
+          refDisplayValue:
+            row[childColumn.title] ?? row[childColumn.column_name],
           type: getOppositeRelationType(colOptions.type),
         });
       }
     }
 
-    await Promise.allSettled(
-      auditUpdateObj.map(async (updateObj) => {
-        await this.afterAddChild({
-          columnTitle: updateObj.columnTitle,
-          columnId: updateObj.columnId,
-          refColumnTitle: updateObj.refColumnTitle,
-          rowId: updateObj.rowId,
-          refRowId: updateObj.refRowId,
-          req: updateObj.req,
-          model: updateObj.model,
-          refModel: updateObj.refModel,
-          displayValue: updateObj.displayValue,
-          refDisplayValue: updateObj.refDisplayValue,
-          type: updateObj.type,
-        });
-      }),
+    await this.afterAddOrRemoveChild(
+      {
+        opType: AuditV1OperationTypes.DATA_LINK,
+        model: auditConfig.parentModel,
+        refModel: auditConfig.childModel,
+        columnTitle: auditConfig.parentColTitle,
+        columnId: auditConfig.parentColId,
+        refColumnTitle: auditConfig.childColTitle,
+        refColumnId: auditConfig.childColId,
+        req: cookie,
+      },
+      parentAuditObj,
+    );
+    await this.afterAddOrRemoveChild(
+      {
+        opType: AuditV1OperationTypes.DATA_LINK,
+        model: auditConfig.childModel,
+        refModel: auditConfig.parentModel,
+        columnTitle: auditConfig.childColTitle,
+        columnId: auditConfig.childColId,
+        refColumnTitle: auditConfig.parentColTitle,
+        refColumnId: auditConfig.parentColId,
+        req: cookie,
+      },
+      childAuditObj,
     );
   }
 
@@ -8432,55 +8609,58 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
         break;
     }
 
+    const parentAuditObj = [];
+    const childAuditObj = [];
+
     for (const childId of childIds) {
       const _childId =
         typeof childId === 'object'
           ? Object.values(childId).join('_')
           : childId;
 
-      auditUpdateObj.push({
-        model: auditConfig.parentModel,
-        refModel: auditConfig.childModel,
+      parentAuditObj.push({
         rowId,
         refRowId: _childId,
-        opSubType: AuditOperationSubTypes.LINK_RECORD,
-        columnTitle: auditConfig.parentColTitle,
-        columnId: auditConfig.parentColId,
-        req: cookie,
+        displayValue: row[column.title] ?? row[column.column_name],
         type: colOptions.type as RelationTypes,
       });
 
       if (parentTable.id !== childTable.id) {
-        auditUpdateObj.push({
-          model: auditConfig.childModel,
-          refModel: auditConfig.parentModel,
+        childAuditObj.push({
           rowId: _childId,
           refRowId: rowId,
-          opSubType: AuditOperationSubTypes.LINK_RECORD,
-          columnTitle: auditConfig.childColTitle,
-          columnId: auditConfig.childColId,
-          req: cookie,
+          refDisplayValue:
+            row[childColumn.title] ?? row[childColumn.column_name],
           type: getOppositeRelationType(colOptions.type),
         });
       }
     }
 
-    await Promise.allSettled(
-      auditUpdateObj.map(async (updateObj) => {
-        await this.afterRemoveChild({
-          columnTitle: updateObj.columnTitle,
-          columnId: updateObj.columnId,
-          refColumnTitle: updateObj.refColumnTitle,
-          rowId: updateObj.rowId,
-          refRowId: updateObj.refRowId,
-          req: updateObj.req,
-          model: updateObj.model,
-          refModel: updateObj.refModel,
-          displayValue: updateObj.displayValue,
-          refDisplayValue: updateObj.refDisplayValue,
-          type: updateObj.type,
-        });
-      }),
+    await this.afterAddOrRemoveChild(
+      {
+        opType: AuditV1OperationTypes.DATA_UNLINK,
+        model: auditConfig.parentModel,
+        refModel: auditConfig.childModel,
+        columnTitle: auditConfig.parentColTitle,
+        columnId: auditConfig.parentColId,
+        refColumnTitle: auditConfig.childColTitle,
+        refColumnId: auditConfig.childColId,
+        req: cookie,
+      },
+      parentAuditObj,
+    );
+    await this.afterAddOrRemoveChild(
+      {
+        opType: AuditV1OperationTypes.DATA_UNLINK,
+        model: auditConfig.childModel,
+        refModel: auditConfig.parentModel,
+        columnTitle: auditConfig.childColTitle,
+        columnId: auditConfig.childColId,
+        refColumnTitle: auditConfig.parentColTitle,
+        refColumnId: auditConfig.parentColId,
+        req: cookie,
+      },
+      childAuditObj,
     );
   }
 
@@ -9383,6 +9563,8 @@ class BaseModelSqlv2 implements IBaseModelSqlV2 {
   getViewId() {
     return this.viewId;
   }
+
+  async statsUpdate(_args: { count: number }) {}
 }
 
 export { BaseModelSqlv2 };
